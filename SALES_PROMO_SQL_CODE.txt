@@ -1,0 +1,133 @@
+#########  CREATING A DB & IMPORTING TABLE #######################
+
+
+CREATE TABLE dim_campaigns(
+	campaign_id VARCHAR (15),
+	campaign_name VARCHAR (15),
+	start_date	DATE,
+	end_date DATE
+);
+
+COPY dim_campaigns (campaign_id,campaign_name,start_date,end_date)
+FROM 'C:\Users\USER\Documents\CODEBASIC_Sales_Promotions\C9_Input_Files\dataset\dim_campaigns.csv'
+DELIMITER ',' 
+CSV HEADER;
+
+SELECT * FROM dim_campaigns
+
+
+CREATE TABLE dim_products(
+	product_code VARCHAR (4),
+	product_name VARCHAR (100),
+	category VARCHAR (50)	
+	
+);
+
+SELECT * FROM dim_products
+
+COPY dim_products (product_code,product_name,category)
+FROM 'C:\Users\USER\Documents\CODEBASIC_Sales_Promotions\C9_Input_Files\dataset\dim_products.csv'
+DELIMITER ',' 
+CSV HEADER;
+
+CREATE TABLE dim_stores(
+	store_id VARCHAR (15),
+	city VARCHAR (16)
+	);
+	
+SELECT * FROM dim_stores
+	
+COPY dim_stores (store_id,city)
+FROM 'C:\Users\USER\Documents\CODEBASIC_Sales_Promotions\C9_Input_Files\dataset\dim_stores.csv'
+DELIMITER ',' 
+CSV HEADER;
+
+CREATE TABLE fact_events(event_id VARCHAR (20),	
+						 store_id VARCHAR (20),	
+						 campaign_id  VARCHAR (20),
+						 product_code VARCHAR (20),
+						 base_price	INT,
+						 promo_type	VARCHAR (20),
+						 "quantity_sold(before_promo)" INT,
+						 "quantity_sold(after_promo)" INT
+
+	
+	);
+SELECT * FROM fact_events
+
+COPY fact_events (event_id,store_id,campaign_id,product_code,base_price,promo_type,"quantity_sold(before_promo)","quantity_sold(after_promo)"
+)
+FROM 'C:\Users\USER\Documents\CODEBASIC_Sales_Promotions\C9_Input_Files\dataset\fact_events.csv'
+DELIMITER ',' 
+CSV HEADER;
+
+
+
+########################### CODE TO REQUEST   ###############################
+
+1. Provide a list of products with a base price greater than 500 and that are featured in promo type of 'BOGOF' (Buy One Get One Free). This information will help us identify high-value products that are currently being heavily discounted, which can be useful for evaluating our pricing and promotion strategies.
+
+
+SELECT  product_name,fe.product_code,promo_type,base_price
+FROM fact_events fe
+JOIN dim_products dp  ON fe.product_code =  dp.product_code
+WHERE base_price > 500 AND promo_type = 'BOGOF'
+
+
+2. Generate a report that provides an overview of the number of stores in each city. The results will be sorted in descending order of store counts, allowing us to identify the cities with the highest store presence. The report includes two essential fields: city and store count, which will assist in optimizing our retail operations.
+
+SELECT city, count(store_id) as Total_Store
+FROM dim_stores
+GROUP BY city
+ORDER BY Total_Store DESC;
+
+
+3. Generate a report that displays each campaign along with the total revenue generated before and after the campaign? The report includes three key fields: campaign_name, total_revenue(before_promotion), total_revenue(after_promotion). This report should help in evaluating the financial impact of our promotional campaigns. (Display the values in millions)
+
+
+SELECT fe.campaign_id,campaign_name,Sum(fe."quantity_sold(before_promo)"*fe.base_price) as "TOTAL_REVENUE(before_promo)",
+Sum(fe."quantity_sold(after_promo)"*fe.base_price) as "TOTAL_REVENUE(after_promo)"
+FROM fact_events fe
+JOIN dim_campaigns dc on fe.campaign_id = dc.campaign_id
+GROUP BY fe.campaign_id, dc.campaign_name
+
+
+4.Produce a report that calculates the Incremental Sold Quantity (ISU%) for each category during the Diwali campaign. Additionally, provide rankings for the categories based on their ISU%. The report will include three key fields: category, isu%, and rank order. This information will assist in assessing the category-wise success and impact of the Diwali campaign on incremental sales.
+
+Note: ISU% (Incremental Sold Quantity Percentage) is calculated as the percentage increase/decrease in quantity sold (after promo) compared to quantity sold (before promo)
+
+
+SELECT Z.category,Z."ISU%",
+	CASE 
+		WHEN "ISU%" > 100 AND "ISU%" <200 THEN 'RANK_1'
+		WHEN "ISU%" > 300 THEN 'RANK_2' 
+		END AS RANKING
+FROM
+(SELECT campaign_name,category,SUM("quantity_sold(before_promo)") as TSB4P,SUM("quantity_sold(after_promo)") AS TSA4P,
+ROUND(SUM("quantity_sold(after_promo)"):: NUMERIC / SUM("quantity_sold(before_promo)"):: NUMERIC * 100, 3) as "ISU%"
+FROM fact_events fe
+JOIN dim_campaigns dc ON fe.campaign_id = dc.campaign_id
+JOIN dim_products dp ON fe.product_code = dp.product_code
+WHERE campaign_name = 'Diwali'
+GROUP BY campaign_name ,category
+ORDER BY "ISU%" DESC) Z
+
+
+5. Create a report featuring the Top 5 products, ranked by Incremental Revenue Percentage (IR%), across all campaigns. The report will provide essential information including product name, category, and ir%. This analysis helps identify the most successful products in terms of incremental revenue across our campaigns, assisting in product optimization.
+
+
+
+SELECT product_name,category,
+ROUND
+	(SUM(base_price*"quantity_sold(after_promo)") :: NUMERIC / 
+	 SUM(base_price*"quantity_sold(before_promo)"):: NUMERIC * 100 , 
+	2) AS "IR%"
+FROM fact_events fe
+JOIN dim_products dp
+ON fe.product_code = dp.product_code
+GROUP BY product_name,category
+ORDER BY "IR%" DESC
+LIMIT 5
+
+
+
